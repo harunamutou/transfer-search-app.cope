@@ -1,46 +1,53 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 client.once("ready", () => {
-  console.log(`BOTログイン成功: ${client.user.tag}`);
+  console.log(`Bot logged in as ${client.user.tag}`);
 });
 
-// !addStation 路線 駅名 距離
-// 例: !addStation 寿本線 鴎町 12.5
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-  if (!message.content.startsWith("!addStation")) return;
+  const args = message.content.split(" ");
 
-  const args = message.content.split(" ").slice(1);
-  if (args.length < 3) {
-    message.reply("⚠ 形式: `!addStation 路線 駅 距離(km)`");
-    return;
+  // !addStation <路線> <駅> <距離>
+  if (args[0] === "!addStation") {
+    if (args.length < 4) {
+      return message.reply("⚠ ERROR 101: !addStation <line> <station> <distance>");
+    }
+
+    const [_, line, station, distance] = args;
+    const res = await fetch(`https://api.render.com/deploy/srv-xxxx/addStation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ line, station, distance })
+    });
+
+    const data = await res.json();
+    message.reply(data.added ? `✅ 追加OK: ${station} (${line} ${distance}km)` : `❌ 追加失敗 or 重複`);
+
   }
 
-  const [line, station, distance] = args;
+  // !stations
+  if (args[0] === "!stations") {
+    const res = await fetch(`https://api.render.com/deploy/srv-xxxx/stations`);
+    const data = await res.json();
+    if (data.error) return message.reply(`⚠ ${data.error}`);
+    message.reply(`📌 登録駅数: ${data.length}`);
+  }
 
-  const res = await fetch(`${process.env.RENDER_URL}/addStation`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ line, station, distance }),
-  });
-
-  const data = await res.json();
-  if (data.added) {
-    message.reply(` 駅を保存しました: **${station} (${line}, ${distance}km)**`);
-  } else {
-    message.reply(`❌ 追加失敗: ${data.error}`);
+  // !resetStations
+  if (args[0] === "!resetStations") {
+    const res = await fetch(`https://api.render.com/deploy/srv-xxxx/resetStations`, { method: "POST" });
+    const data = await res.json();
+    message.reply(`♻ ${data.message}`);
   }
 });
 
