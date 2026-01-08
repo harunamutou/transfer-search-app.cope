@@ -1,12 +1,16 @@
 {
   "name": "transfer-search-app",
   "version": "1.0.0",
-  "description": "架空路線乗換検索アプリ（Cloudflare Pages + D1）",
+  "description": "架空路線乗換検索アプリ（Discord連携）",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "deploy": "wrangler deploy"
+    "start": "node server.js"
   },
-  "devDependencies": {
-    "@cloudflare/wrangler": "^4.58.0"
+  "dependencies": {
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.11.0"      // ← PostgreSQL接続用
   }
 }
