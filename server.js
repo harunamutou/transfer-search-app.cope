@@ -9,19 +9,16 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 環境変数から取得
-const DISCORD_SEARCH_LOG = process.env.DISCORD_SEARCH_LOG;
-const DISCORD_ADDLINE_LOG = process.env.DISCORD_ADDLINE_LOG;
-const DISCORD_ERROR_LOG = process.env.DISCORD_ERROR_LOG;
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
+// Discord Webhook
+const DISCORD_SEARCH_LOG = "https://discord.com/api/webhooks/1458559479531573383/clnGsN1RzEesGLtsYWRApXlKxBY1ON5vuSVT9nJUxIPrs5bka8ADZPKxGT4K5isUIfdY";
+const DISCORD_ADDLINE_LOG = "https://discord.com/api/webhooks/1458559343065829377/9pf_8WeNhGb9XzVoMJTmoj9YTy7-imKELnzFxMTayIv_hUTlM-gA19_3eGMYKdOEO6w5";
+const DISCORD_ERROR_LOG = "https://discord.com/api/webhooks/1458547135472467998/2Ces9SugoRXoJgyC-WavJ3tmNmLy90Z5xIhvBLWcwkN_LZnRjLfxsTf5dOR3eHOX8lMO";
 
-// サーバー内駅データ
+// サーバー内駅データ（初期は空）
 let stationData = [];
 
 // Discord Webhook送信
 async function sendDiscordLog(webhook, content) {
-  if (!webhook) return;
   try {
     await fetch(webhook, {
       method: "POST",
@@ -39,11 +36,9 @@ function logErrorToDiscord(message) {
 
 // 駅追加
 function addStation(line, station, distance) {
-  if (!line || !station || distance == null) return false;
   const exists = stationData.find(s => s.station === station.trim());
   if (exists) return false; // すでにある
-  const entry = { line: line.trim(), station: station.trim(), distance: Number(distance) };
-  stationData.push(entry);
+  stationData.push({ line: line.trim(), station: station.trim(), distance: Number(distance) });
   sendDiscordLog(DISCORD_ADDLINE_LOG, `駅追加: ${station} (${line}, ${distance}km)`);
   return true;
 }
@@ -69,16 +64,30 @@ function searchRoute(start, end, via = []) {
   }
 }
 
-// 運賃計算（拡張版）
+// 運賃計算（指定テーブルのみ、160km以上の加算なし）
 function calculateFare(distance) {
   const fareTable = [
-    { maxDistance: 1, fare: 140 }, { maxDistance: 3, fare: 190 }, { maxDistance: 10, fare: 200 },
-    { maxDistance: 15, fare: 240 }, { maxDistance: 20, fare: 330 }, { maxDistance: 25, fare: 420 },
-    { maxDistance: 30, fare: 510 }, { maxDistance: 35, fare: 590 }, { maxDistance: 40, fare: 680 },
-    { maxDistance: 45, fare: 770 }, { maxDistance: 50, fare: 860 }, { maxDistance: 60, fare: 990 },
-    { maxDistance: 70, fare: 1170 }, { maxDistance: 80, fare: 1340 }, { maxDistance: 90, fare: 1520 },
-    { maxDistance: 100, fare: 1690 }, { maxDistance: 120, fare: 1980 }, { maxDistance: 140, fare: 2310 },
-    { maxDistance: 160, fare: 2640 }, { maxDistance: 200, fare: 3410 },
+    { maxDistance: 1, fare: 140 },
+    { maxDistance: 3, fare: 190 },
+    { maxDistance: 10, fare: 200 },
+    { maxDistance: 15, fare: 240 },
+    { maxDistance: 20, fare: 330 },
+    { maxDistance: 25, fare: 420 },
+    { maxDistance: 30, fare: 510 },
+    { maxDistance: 35, fare: 590 },
+    { maxDistance: 40, fare: 680 },
+    { maxDistance: 45, fare: 770 },
+    { maxDistance: 50, fare: 860 },
+    { maxDistance: 60, fare: 990 },
+    { maxDistance: 70, fare: 1170 },
+    { maxDistance: 80, fare: 1340 },
+    { maxDistance: 90, fare: 1520 },
+    { maxDistance: 100, fare: 1690 },
+    { maxDistance: 120, fare: 1980 },
+    { maxDistance: 140, fare: 2310 },
+    { maxDistance: 160, fare: 2640 },
+    { maxDistance: 180, fare: 3080 },
+    { maxDistance: 200, fare: 3410 },
     { maxDistance: 220, fare: 3740 },
     { maxDistance: 240, fare: 4070 },
     { maxDistance: 260, fare: 4510 },
@@ -174,6 +183,8 @@ function calculateFare(distance) {
   for (let i = 0; i < fareTable.length; i++) {
     if (distance <= fareTable[i].maxDistance) return fareTable[i].fare;
   }
+
+  // 160km超は未定義（ユーザーで追加可能）
   return null;
 }
 
@@ -206,7 +217,7 @@ button:hover { background:#0056b3; }
 <input id="via3" placeholder="経由駅3 (任意)">
 <button onclick="search()">検索</button>
 <div id="result"></div>
-<h3>駅追加（Discord経由）</h3>
+<h3>駅追加（テスト用）</h3>
 <input id="line" placeholder="路線名">
 <input id="station" placeholder="駅名">
 <input id="distance" placeholder="距離(km)">
@@ -228,7 +239,6 @@ async function search() {
     resultDiv.innerHTML='<div class="card"><p><strong>経路:</strong> '+data.path.join(" → ")+'</p><p><strong>総距離:</strong> <span class="distance">'+data.distance.toFixed(2)+' km</span></p><p><strong>運賃:</strong> <span class="fare">¥'+(data.fare!==null?data.fare.toLocaleString():"未定")+'</span></p></div>';
   }
 }
-
 async function addStationUI() {
   const line=document.getElementById("line").value.trim();
   const station=document.getElementById("station").value.trim();
@@ -247,23 +257,19 @@ async function addStationUI() {
 app.post("/search", async (req, res) => {
   const { start, end, via } = req.body;
   const result = searchRoute(start, end, via || []);
-  await sendDiscordLog(DISCORD_SEARCH_LOG, `検索: ${start} → ${end} 経由: ${via?.join(",")||"-"} 結果: ${JSON.stringify(result)}`);
+  await sendDiscordLog(DISCORD_SEARCH_LOG, `検索: ${start} → ${end} 経由: ${via?.join(",") || "-"} 結果: ${JSON.stringify(result)}`);
   res.json(result);
 });
 
-app.post("/addStation", async (req, res) => {
+app.post("/addStation", (req, res) => {
   const { line, station, distance } = req.body;
   const added = addStation(line, station, distance);
-  // Discord Webhookに送信
-  if (added) {
-    await sendDiscordLog(DISCORD_ADDLINE_LOG, `駅追加: ${station} (${line}, ${distance}km)`);
-  }
   res.json({ added, station, line, distance });
 });
 
-app.post("/resetStations", async (req, res) => {
+app.post("/resetStations", (req, res) => {
   stationData = [];
-  await sendDiscordLog(DISCORD_ADDLINE_LOG, "駅データを完全リセットしました");
+  sendDiscordLog(DISCORD_ADDLINE_LOG, "駅データを完全リセットしました");
   res.json({ message: "駅データを完全リセットしました" });
 });
 
