@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>経路検索アプリ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+<h2>経路検索</h2>
+<input id="start" placeholder="出発駅">
+<input id="end" placeholder="到着駅">
+<input id="via1" placeholder="経由駅1 (任意)">
+<input id="via2" placeholder="経由駅2 (任意)">
+<input id="via3" placeholder="経由駅3 (任意)">
+<button onclick="search()">検索</button>
+<div id="result"></div>
+
+<h3>駅追加（テスト用）</h3>
+<input id="line" placeholder="路線名">
+<input id="station" placeholder="駅名">
+<input id="distance" placeholder="距離(km)">
+<button onclick="addStationUI()">追加</button>
+</div>
+<script src="script.js"></script>
+</body>
+</html>
