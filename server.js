@@ -1,5 +1,6 @@
 import express from "express";
 import bodyParser from "body-parser";
+import fetch from "node-fetch";
 import { queryD1 } from "./database.js";
 
 const app = express();
@@ -8,10 +9,10 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// Discord Webhook（維持）
-const DISCORD_SEARCH_LOG = process.env.DISCORD_SEARCH_LOG;
-const DISCORD_ADDLINE_LOG = process.env.DISCORD_ADDLINE_LOG;
-const DISCORD_ERROR_LOG = process.env.DISCORD_ERROR_LOG;
+// Discord Webhook（そのまま維持）
+const DISCORD_SEARCH_LOG = "https://discord.js";
+const DISCORD_ADDLINE_LOG = "https://discord.js";
+const DISCORD_ERROR_LOG = "https://discord.js";
 
 async function sendDiscordLog(webhook, content) {
   try {
@@ -25,33 +26,23 @@ async function sendDiscordLog(webhook, content) {
   }
 }
 
-async function logErrorToDiscord(message) {
+function logErrorToDiscord(message) {
   sendDiscordLog(DISCORD_ERROR_LOG, message);
 }
 
-// 運賃計算（そのまま使える）
+// 運賃計算（160km以上の加算なし / 既存テーブルのみ）
 function calculateFare(distance) {
   const fareTable = [
-    { maxDistance: 1, fare: 140 },
-    { maxDistance: 3, fare: 190 },
-    { maxDistance: 10, fare: 200 },
-    { maxDistance: 15, fare: 240 },
-    { maxDistance: 20, fare: 330 },
-    { maxDistance: 25, fare: 420 },
-    { maxDistance: 30, fare: 510 },
-    { maxDistance: 35, fare: 590 },
-    { maxDistance: 40, fare: 680 },
-    { maxDistance: 45, fare: 770 },
-    { maxDistance: 50, fare: 860 },
-    { maxDistance: 60, fare: 990 },
-    { maxDistance: 70, fare: 1170 },
-    { maxDistance: 80, fare: 1340 },
-    { maxDistance: 90, fare: 1520 },
-    { maxDistance: 100, fare: 1690 },
-    { maxDistance: 120, fare: 1980 },
-    { maxDistance: 140, fare: 2310 },
-    { maxDistance: 160, fare: 2640 },
-    { maxDistance: 180, fare: 3080 },
+    { maxDistance: 1, fare: 140 }, { maxDistance: 3, fare: 190 },
+    { maxDistance: 10, fare: 200 }, { maxDistance: 15, fare: 240 },
+    { maxDistance: 20, fare: 330 }, { maxDistance: 25, fare: 420 },
+    { maxDistance: 30, fare: 510 }, { maxDistance: 35, fare: 590 },
+    { maxDistance: 40, fare: 680 }, { maxDistance: 45, fare: 770 },
+    { maxDistance: 50, fare: 860 }, { maxDistance: 60, fare: 990 },
+    { maxDistance: 70, fare: 1170 }, { maxDistance: 80, fare: 1340 },
+    { maxDistance: 90, fare: 1520 }, { maxDistance: 100, fare: 1690 },
+    { maxDistance: 120, fare: 1980 }, { maxDistance: 140, fare: 2310 },
+    { maxDistance: 160, fare: 2640 },    { maxDistance: 180, fare: 3080 },
     { maxDistance: 200, fare: 3410 },
     { maxDistance: 220, fare: 3740 },
     { maxDistance: 240, fare: 4070 },
@@ -148,22 +139,23 @@ function calculateFare(distance) {
   for (const row of fareTable) {
     if (distance <= row.maxDistance) return row.fare;
   }
-  return null; // 160km以上は未定義
+  return null;
 }
 
-// 駅追加API（永続保存）
+// 駅追加API（D1へ保存）
 app.post("/addStation", async (req, res) => {
   const { line, station, distance } = req.body;
-  if (!line || !station || !distance) {
-    const errMsg = "ERROR 001: Missing required fields (line/station/distance)";
-    await logErrorToDiscord(errMsg);
+
+  if (!line || !station || distance === undefined) {
+    const errMsg = "ERROR 001: Missing required fields";
+    logErrorToDiscord(errMsg);
     return res.status(400).json({ error: errMsg });
   }
 
   try {
     const check = await queryD1("SELECT * FROM stations WHERE station = ?", [station.trim()]);
     if (check.length > 0) {
-      return res.json({ added: false, message: "Already exists" });
+      return res.json({ added: false, message: "Station already exists" });
     }
 
     await queryD1(
@@ -175,20 +167,8 @@ app.post("/addStation", async (req, res) => {
     res.json({ added: true, line, station, distance });
 
   } catch (err) {
-    const errMsg = `ERROR 002: DB Insert failed - ${err.message}`;
-    await logErrorToDiscord(errMsg);
-    res.status(500).json({ error: errMsg });
-  }
-});
-
-// 駅一覧取得
-app.get("/stations", async (req, res) => {
-  try {
-    const result = await queryD1("SELECT * FROM stations ORDER BY distance ASC");
-    res.json(result);
-  } catch (err) {
-    const errMsg = `ERROR 003: Failed to fetch stations - ${err.message}`;
-    await logErrorToDiscord(errMsg);
+    const errMsg = `ERROR 002: DB insert failed - ${err.message}`;
+    logErrorToDiscord(errMsg);
     res.status(500).json({ error: errMsg });
   }
 });
@@ -196,9 +176,10 @@ app.get("/stations", async (req, res) => {
 // 経路検索API
 app.post("/search", async (req, res) => {
   const { start, end, via = [] } = req.body;
+
   if (!start || !end) {
     const errMsg = "ERROR 004: start and end required";
-    await logErrorToDiscord(errMsg);
+    logErrorToDiscord(errMsg);
     return res.status(400).json({ error: errMsg });
   }
 
@@ -224,12 +205,24 @@ app.post("/search", async (req, res) => {
 
   } catch (err) {
     const errMsg = `ERROR 005: Route search failed - ${err.message}`;
-    await logErrorToDiscord(errMsg);
+    logErrorToDiscord(errMsg);
     res.status(500).json({ error: errMsg });
   }
 });
 
-// 駅リセット
+// 駅一覧取得
+app.get("/stations", async (req, res) => {
+  try {
+    const result = await queryD1("SELECT * FROM stations ORDER BY distance ASC");
+    res.json(result);
+  } catch (err) {
+    const errMsg = `ERROR 003: Failed to fetch stations - ${err.message}`;
+    logErrorToDiscord(errMsg);
+    res.status(500).json({ error: errMsg });
+  }
+});
+
+// DBリセット
 app.post("/resetStations", async (req, res) => {
   try {
     await queryD1("DELETE FROM stations", []);
@@ -237,7 +230,7 @@ app.post("/resetStations", async (req, res) => {
     res.json({ message: "駅データを完全リセットしました" });
   } catch (err) {
     const errMsg = `ERROR 006: Reset failed - ${err.message}`;
-    await logErrorToDiscord(errMsg);
+    logErrorToDiscord(errMsg);
     res.status(500).json({ error: errMsg });
   }
 });
