@@ -1,0 +1,7 @@
+name = "transfer-search-app"
+compatibility_date = "2026-01-09"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "station-db"
+database_id = "6f091824-b060-4343-a3b9-b65e7f715de9"
